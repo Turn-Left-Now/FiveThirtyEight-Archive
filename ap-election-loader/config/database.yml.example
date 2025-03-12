@@ -1,0 +1,17 @@
+development:
+  database: elections
+  username:
+  password:
+  host: localhost
+
+staging:
+  database: elections
+  username:
+  password:
+  host:
+
+production:
+  database: elections
+  username:
+  password:
+  host:

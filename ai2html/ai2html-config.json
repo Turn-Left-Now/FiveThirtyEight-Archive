@@ -1,0 +1,54 @@
+{
+  "fonts": [
+    {
+      "aifont": "AtlasGrotesk-Bold",
+      "family": "\"AtlasGroteskWeb\",\"Helvetica Neue\",Helvetica,Arial,sans-serif",
+      "weight": "700",
+      "style": ""
+    },
+    {
+      "aifont": "AtlasGrotesk-Regular",
+      "family": "\"AtlasGroteskWeb\",\"Helvetica Neue\",Helvetica,Arial,sans-serif",
+      "weight": "400",
+      "style": ""
+    },
+    {
+      "aifont": "AtlasGrotesk-BoldItalic",
+      "family": "\"AtlasGroteskWeb\",\"Helvetica Neue\",Helvetica,Arial,sans-serif",
+      "weight": "700",
+      "style": "italic"
+    },
+    {
+      "aifont": "AtlasGrotesk-RegularItalic",
+      "family": "\"AtlasGroteskWeb\",\"Helvetica Neue\",Helvetica,Arial,sans-serif",
+      "weight": "400",
+      "style": "italic"
+    },
+    {
+      "aifont": "DecimaMonoPro",
+      "family": "DecimaMono,monospace",
+      "weight": "400",
+      "style": ""
+    },
+    {
+      "aifont": "DecimaMonoPro-Bold",
+      "family": "DecimaMono,monospace",
+      "weight": "700",
+      "style": ""
+    },
+    {
+      "aifont": "Decima",
+      "family": "Decima",
+      "weight": "400",
+      "style": ""
+    }
+  ],
+  "local_preview_template": "ai2html-template.html",
+  "center_html_output": false,
+  // "image_format": ["svg"],
+  "hed": "",
+  "dek": "",
+  "note": "",
+  "source": "",
+  "alt": ""
+}

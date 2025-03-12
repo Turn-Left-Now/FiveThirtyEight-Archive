@@ -1,0 +1,208 @@
+name: Deploy
+
+# This workflow gets triggered on any push, or when we manually
+# trigger a repository_dispatch event via the github API like this:
+
+#  curl \
+#    -H "Authorization: token <github token>" \
+#    -X POST \
+#    -H "Accept: application/vnd.github.v3+json" \
+#    https://api.github.com/repos/fivethirtyeight/deploy-test/dispatches \
+#    -d '{"event_type":"deploy-staging"}'
+
+# If the workflow was triggered by a push, github.event.action
+# will be empty, otherwise it will contain the event_type from above,
+# which should be one of [deploy-staging, deploy-qa, deploy-production].
+
+on:
+  workflow_call:
+    inputs:
+      skip-qa-deploy:
+        required: false
+        type: boolean
+        default: false
+      ruby-version:
+        required: false
+        type: string
+      ruby-gemfile-dir:
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    # Exit if this workflow was triggered by a push and the
+    # latest commit message contains 'nodeploy'
+    if: ${{ github.event.action || !contains(github.event.head_commit.message, 'nodeploy') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.branch || github.ref_name || '' }}
+
+      - name: Keys
+        run: ${{ secrets.KEYS_CMD }}
+
+      # Sets env.branch to an empty string if the branch is main or master,
+      # otherwise to the branch name
+      - name: Get Git branch name
+        run: |
+          branch="${{ github.event.client_payload.branch || github.ref_name }}"
+          branch=$(echo $branch | sed s/^main$// | sed s/^master$//)
+          echo "branch=$branch" >> $GITHUB_ENV
+
+      - name: Set Git user
+        run: |
+          git config --global user.name 'FiveThirtyEight Bot'
+          git config --global user.email '${{ secrets.FTE_BOT_EMAIL }}'
+
+      - name: Read package.json
+        id: package
+        run: |
+          content=`cat ./package.json`
+          content="${content//'%'/'%25'}"
+          content="${content//$'\n'/''}"
+          content="${content//$'\r'/''}"
+          echo "package=$content" >> $GITHUB_ENV
+
+      - name: Set up node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ fromJson(env.package).engines.node }}
+
+      - name: Get kernel release
+        run: |
+          echo "kernelrelease="$(uname -r) >> $GITHUB_ENV
+
+      # Use a cached version of the node_modules directory if one exists.
+      # The cache key has to match exactly on the kernel version and contents
+      # of yarn.lock; if either of those change, the node_modules directory
+      # is rebuilt.
+      # See https://stackoverflow.com/questions/61010294/how-to-cache-yarn-packages-in-github-actions/62244232#62244232
+      - name: Get cached node modules
+        if: github.repository != 'fivethirtyeight/app-template'
+        id: cache-node-modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-${{ env.kernelrelease }}-cache-node-modules-${{ hashFiles('yarn.lock') }}
+
+      # Run yarn install only on cache misses
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_AUTH_TOKEN }}" > ~/.npmrc
+          yarn install
+
+      - name: Set up Ruby
+        if: ${{ inputs.ruby-version }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          working-directory: ${{ inputs.ruby-gemfile-dir }}
+          bundler-cache: true
+
+      # Run a production deploy only when the branch is main/master, the
+      # deploy.public flag is true in package.json, and (this is a push deploy
+      # or github.event.action specifies production). We never use DEPLOY_BRANCH
+      # for production deploys.
+      - name: Run pre-deploy-production script
+        if: |
+          env.branch == '' &&
+          fromJson(env.package).deploy.public == true &&
+          (!github.event.action || github.event.action == 'deploy-production') &&
+          fromJson(env.package).scripts['pre-deploy-production']
+        run: |
+          yarn run pre-deploy-production
+
+      - name: Deploy to production
+        if: |
+          env.branch == '' &&
+          fromJson(env.package).deploy.public == true &&
+          (!github.event.action || github.event.action == 'deploy-production')
+        run: |
+          yarn run deploy-production
+
+      - name: Run post-deploy-production script
+        if: |
+          env.branch == '' &&
+          fromJson(env.package).deploy.public == true &&
+          (!github.event.action || github.event.action == 'deploy-production') &&
+          fromJson(env.package).scripts['post-deploy-production']
+        run: |
+          yarn run post-deploy-production
+
+      # Run a staging deploy for every push, or when github.event.action specifies
+      # staging. We always set the DEPLOY_BRANCH env variable when deploying, though
+      # it's empty for main/master deploys.
+      - name: Run pre-deploy-staging script
+        if: |
+          (!github.event.action || github.event.action == 'deploy-staging') &&
+          fromJson(env.package).scripts['pre-deploy-staging']
+        run: |
+          yarn run pre-deploy-staging
+
+      - name: Deploy to staging
+        if: |
+          (!github.event.action || github.event.action == 'deploy-staging')
+        run: |
+          DEPLOY_BRANCH=${{ env.branch }} yarn run deploy-staging
+
+      - name: Run post-deploy-staging script
+        if: |
+          (!github.event.action || github.event.action == 'deploy-staging') &&
+          fromJson(env.package).scripts['post-deploy-staging']
+        run: |
+          yarn run post-deploy-staging
+
+      # Run a QA deploy for every push, or when github.event.action specifies
+      # QA. We always set the DEPLOY_BRANCH env variable when deploying, though
+      # it's empty for main/master deploys.
+      - name: Run pre-deploy-qa script
+        if: |
+          (!inputs.skip-qa-deploy) &&
+          (!github.event.action || github.event.action == 'deploy-qa') &&
+          fromJson(env.package).scripts['pre-deploy-qa']
+        run: |
+          yarn run pre-deploy-qa
+
+      - name: Deploy to QA
+        if: |
+          (!inputs.skip-qa-deploy) &&
+          (!github.event.action || github.event.action == 'deploy-qa')
+        run: |
+          DEPLOY_BRANCH=${{ env.branch }} yarn run deploy-qa
+
+      - name: Run post-deploy-qa script
+        if: |
+          (!inputs.skip-qa-deploy) &&
+          (!github.event.action || github.event.action == 'deploy-qa') &&
+          fromJson(env.package).scripts['post-deploy-qa']
+        run: |
+          yarn run post-deploy-qa
+
+      # Handle errors
+      - name: Notify slack on failure
+        uses: voxmedia/github-action-slack-notify-build@v1
+        if: failure()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_TOKEN }}
+        with:
+          channel: interactive
+          status: FAILED
+          color: danger
+
+      - name: Set up Sentry CLI
+        uses: mathieu-bour/setup-sentry-cli@v1
+        if: failure()
+        with:
+          token: ${{ SECRETS.SENTRY_TOKEN }}
+          organization: fivethirtyeight
+          project: build-server
+
+      - name: Notify Sentry on failure
+        if: failure()
+        run: |
+          export SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          sentry-cli send-event -m "Build failed for ${{ github.repository }}" -m "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

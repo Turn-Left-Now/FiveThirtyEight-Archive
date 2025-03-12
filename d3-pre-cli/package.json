@@ -1,0 +1,20 @@
+{
+  "name": "d3-pre-cli",
+  "version": "1.1.4",
+  "description": "Command line utility for d3-pre",
+  "main": "index.js",
+  "bin": {
+    "d3-pre": "index.js"
+  },
+  "scripts": {
+    "test": "semistandard"
+  },
+  "author": "Matthew Conlen",
+  "license": "MIT",
+  "dependencies": {
+    "d3-pre-renderer": "^2.1.0"
+  },
+  "devDependencies": {
+    "semistandard": "^7.0.4"
+  }
+}
